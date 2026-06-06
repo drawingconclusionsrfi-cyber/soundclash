@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Card Cutter · Slice card sheets into individual JPGs</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #0c0a09; color: #f5f5f4; font-family: 'Bricolage Grotesque', system-ui, sans-serif; min-height: 100vh; }
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+  .font-display { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; letter-spacing: -0.03em; }
+  .font-tech { font-family: 'JetBrains Mono', monospace; }
+
+  /* ---------- header ---------- */
+  header {
+    border-bottom: 1px solid #292524;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: #0c0a09;
+    z-index: 10;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: #f59e0b;
+    display: flex; align-items: center; justify-content: center;
+    transform: rotate(-3deg);
+    color: #0c0a09;
+  }
+  .logo-icon svg { width: 20px; height: 20px; }
+  .logo-title { font-family: 'Bricolage Grotesque'; font-weight: 800; letter-spacing: -0.03em; font-size: 20px; line-height: 1; }
+  .logo-sub { font-family: 'JetBrains Mono'; font-size: 11px; color: #78716c; margin-top: 4px; }
+
+  .reset-btn {
+    font-family: 'JetBrains Mono';
+    font-size: 11px;
+    color: #a8a29e;
+    background: transparent;
+    border: 1px solid #292524;
+    padding: 8px 12px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .reset-btn:hover { color: #f59e0b; border-color: #f59e0b; }
+  .reset-btn svg { width: 12px; height: 12px; }
+  body[data-state="active"] .reset-btn { display: flex; }
+
+  /* ---------- main ---------- */
+  main { flex: 1; padding: 24px; }
+
+  /* ---------- upload zone ---------- */
+  .upload-zone {
+    border: 2px dashed #292524;
+    background: rgba(28, 25, 23, 0.4);
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 128px 24px;
+    text-align: center;
+    background-image: radial-gradient(rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 4px 4px;
+  }
+  .upload-zone:hover, .upload-zone.dragging {
+    border-color: #f59e0b;
+    background-color: #1c1917;
+  }
+  .upload-icon-box {
+    width: 64px; height: 64px;
+    background: #292524;
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 24px;
+  }
+  .upload-icon-box svg { width: 28px; height: 28px; color: #f59e0b; }
+  .upload-title { font-family: 'Bricolage Grotesque'; font-weight: 800; letter-spacing: -0.03em; font-size: 30px; margin-bottom: 8px; }
+  .upload-sub { font-family: 'JetBrains Mono'; font-size: 11px; color: #78716c; }
+  .upload-formats { font-family: 'JetBrains Mono'; font-size: 11px; color: #57534e; margin-top: 4px; }
+
+  .steps { margin-top: 32px; display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 768px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+  .step { border: 1px solid #292524; padding: 16px; font-family: 'JetBrains Mono'; font-size: 12px; color: #78716c; }
+  .step-num { color: #f59e0b; font-weight: 700; margin-bottom: 8px; }
+
+  /* ---------- active layout ---------- */
+  .active-state { display: none; }
+  body[data-state="active"] .active-state { display: block; }
+  body[data-state="active"] .upload-state { display: none; }
+
+  .work-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+  @media (min-width: 1024px) { .work-grid { grid-template-columns: 3fr 2fr; } }
+
+  .panel { border: 1px solid #292524; background: rgba(28, 25, 23, 0.4); padding: 16px; }
+  .panel + .panel { margin-top: 16px; }
+  .panel-label {
+    font-family: 'JetBrains Mono';
+    font-size: 11px;
+    color: #78716c;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .panel-label-row { display: flex; align-items: center; justify-content: space-between; }
+  .panel-label-row button {
+    background: transparent;
+    border: none;
+    color: #78716c;
+    cursor: pointer;
+    font-family: 'JetBrains Mono';
+    font-size: 11px;
+  }
+  .panel-label-row button:hover { color: #f59e0b; }
+
+  /* ---------- preview ---------- */
+  .preview-meta {
+    font-family: 'JetBrains Mono';
+    font-size: 11px;
+    color: #78716c;
+    margin-top: 12px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .preview-meta-top {
+    font-family: 'JetBrains Mono';
+    font-size: 11px;
+    color: #78716c;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .preview-meta-top .count strong { color: #f59e0b; }
+  .preview-meta-top .count { color: #57534e; }
+
+  .image-wrap { position: relative; display: block; width: 100%; }
+  .image-wrap img { width: 100%; height: auto; display: block; user-select: none; -webkit-user-drag: none; }
+  .image-wrap svg.overlay {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .image-wrap svg.overlay g { pointer-events: auto; cursor: pointer; }
+  .image-wrap svg.overlay text { pointer-events: none; }
+
+  /* ---------- presets ---------- */
+  .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .preset-btn {
+    border: 1px solid #292524;
+    background: transparent;
+    padding: 8px 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    color: #f5f5f4;
+  }
+  .preset-btn:hover { border-color: #f59e0b; }
+  .preset-btn:hover .preset-label { color: #f59e0b; }
+  .preset-label { font-family: 'Bricolage Grotesque'; font-weight: 800; letter-spacing: -0.03em; font-size: 14px; transition: color 0.15s; }
+  .preset-sub { font-family: 'JetBrains Mono'; font-size: 11px; color: #78716c; }
+
+  /* ---------- number field ---------- */
+  .grid-size { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field-label { font-family: 'JetBrains Mono'; font-size: 11px; color: #a8a29e; display: block; margin-bottom: 4px; }
+  .num-wrap { display: flex; border: 1px solid #292524; }
+  .num-wrap:focus-within { border-color: #f59e0b; }
+  .num-wrap button {
+    padding: 0 12px;
+    background: #1c1917;
+    border: none;
+    color: #a8a29e;
+    cursor: pointer;
+    font-family: 'JetBrains Mono';
+    font-size: 14px;
+  }
+  .num-wrap button:hover { background: #292524; }
+  .num-wrap input {
+    flex: 1;
+    background: #0c0a09;
+    border: none;
+    color: #f5f5f4;
+    padding: 8px;
+    font-family: 'JetBrains Mono';
+    font-size: 14px;
+    text-align: center;
+    outline: none;
+    width: 100%;
+  }
+  /* hide spinner */
+  .num-wrap input::-webkit-outer-spin-button,
+  .num-wrap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .num-wrap input[type=number] { -moz-appearance: textfield; }
+
+  /* ---------- slider field ---------- */
+  .slider-field + .slider-field { margin-top: 12px; }
+  .slider-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .slider-head .slider-label { font-family: 'JetBrains Mono'; font-size: 11px; color: #a8a29e; }
+  .slider-head .slider-value { font-family: 'JetBrains Mono'; font-size: 11px; color: #f59e0b; }
+  input[type=range] { width: 100%; -webkit-appearance: none; appearance: none; background: transparent; }
+  input[type=range]::-webkit-slider-runnable-track { height: 2px; background: #44403c; border-radius: 1px; }
+  input[type=range]::-moz-range-track { height: 2px; background: #44403c; border-radius: 1px; }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    height: 14px; width: 14px;
+    border-radius: 50%; background: #f59e0b;
+    margin-top: -6px; cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    height: 14px; width: 14px;
+    border-radius: 50%; background: #f59e0b;
+    border: none; cursor: pointer;
+  }
+
+  /* ---------- output panel ---------- */
+  .text-input {
+    width: 100%;
+    background: #0c0a09;
+    border: 1px solid #292524;
+    color: #f5f5f4;
+    padding: 8px 12px;
+    font-family: 'JetBrains Mono';
+    font-size: 13px;
+    outline: none;
+  }
+  .text-input:focus { border-color: #f59e0b; }
+  .text-hint { font-family: 'JetBrains Mono'; font-size: 11px; color: #57534e; margin-top: 4px; }
+
+  /* ---------- cut button ---------- */
+  .cut-btn {
+    width: 100%;
+    background: #f59e0b;
+    color: #0c0a09;
+    border: none;
+    font-family: 'Bricolage Grotesque';
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-size: 20px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: background 0.15s;
+  }
+  .cut-btn:hover:not(:disabled) { background: #fbbf24; }
+  .cut-btn:disabled { background: #292524; color: #57534e; cursor: not-allowed; }
+  .cut-btn svg { width: 20px; height: 20px; }
+
+  /* ---------- gallery ---------- */
+  .gallery { border-top: 1px solid #292524; padding: 24px; display: none; }
+  .gallery.visible { display: block; }
+  .gallery-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .gallery-title { font-family: 'Bricolage Grotesque'; font-weight: 800; letter-spacing: -0.03em; font-size: 24px; }
+  .gallery-sub { font-family: 'JetBrains Mono'; font-size: 11px; color: #78716c; margin-top: 4px; }
+  .dl-all {
+    background: #f5f5f4;
+    color: #0c0a09;
+    border: none;
+    font-family: 'Bricolage Grotesque';
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-size: 16px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .dl-all:hover { background: #f59e0b; }
+  .dl-all svg { width: 16px; height: 16px; }
+
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  @media (min-width: 640px) { .gallery-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 768px) { .gallery-grid { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 1024px) { .gallery-grid { grid-template-columns: repeat(6, 1fr); } }
+
+  .card-tile {
+    border: 1px solid #292524;
+    background: rgba(28, 25, 23, 0.4);
+    padding: 8px;
+    transition: border-color 0.15s;
+  }
+  .card-tile:hover { border-color: #f59e0b; }
+  .card-img-wrap {
+    position: relative;
+    background: #0c0a09;
+    margin-bottom: 8px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .card-img-wrap img { width: 100%; height: auto; display: block; }
+  .card-img-wrap .overlay-dl {
+    position: absolute; inset: 0;
+    background: rgba(12, 10, 9, 0);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+    transition: all 0.15s;
+  }
+  .card-img-wrap:hover .overlay-dl { opacity: 1; background: rgba(12, 10, 9, 0.7); }
+  .overlay-dl svg { width: 24px; height: 24px; color: #f59e0b; }
+  .card-filename { font-family: 'JetBrains Mono'; font-size: 11px; color: #a8a29e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---------- footer ---------- */
+  footer {
+    border-top: 1px solid #292524;
+    padding: 16px 24px;
+    font-family: 'JetBrains Mono';
+    font-size: 11px;
+    color: #57534e;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body data-state="empty">
+
+<!-- inline icons (Lucide-style strokes) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-scissors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+      <line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>
+    </symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+    </symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+    </symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+    </symbol>
+  </defs>
+</svg>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon"><svg><use href="#i-scissors"/></svg></div>
+    <div>
+      <div class="logo-title">CARD&nbsp;CUTTER</div>
+      <div class="logo-sub">slice sheets into individual jpgs</div>
+    </div>
+  </div>
+  <button class="reset-btn" id="reset-btn">
+    <svg><use href="#i-reset"/></svg> NEW SHEET
+  </button>
+</header>
+
+<main>
+  <!-- empty / upload state -->
+  <div class="upload-state">
+    <div class="upload-zone" id="drop-zone">
+      <div class="upload-icon-box"><svg><use href="#i-upload"/></svg></div>
+      <div class="upload-title">DROP A SHEET HERE</div>
+      <div class="upload-sub">or click to browse</div>
+      <div class="upload-formats">jpg · png · webp</div>
+      <input type="file" id="file-input" accept="image/*" hidden />
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="step-num">01 / UPLOAD</div>Drop or browse a card sheet. The bigger the source, the cleaner the cuts.</div>
+      <div class="step"><div class="step-num">02 / ALIGN</div>Set rows + columns, dial margins and gaps until the yellow grid sits on every card.</div>
+      <div class="step"><div class="step-num">03 / CUT</div>Click cells to exclude empties. Hit cut, download all as numbered JPGs.</div>
+    </div>
+  </div>
+
+  <!-- active state -->
+  <div class="active-state">
+    <div class="work-grid">
+      <!-- PREVIEW -->
+      <div>
+        <div class="panel">
+          <div class="preview-meta-top">
+            <span>Source · Click cells to exclude</span>
+            <span class="count"><strong id="included-count">0</strong> / <span id="total-count">0</span> cards</span>
+          </div>
+          <div class="image-wrap">
+            <img id="source-img" alt="source sheet" />
+            <svg class="overlay" id="overlay" preserveAspectRatio="none"></svg>
+          </div>
+          <div class="preview-meta">
+            <span id="dim-info">— × —px</span>
+            <span>Yellow = included · Red = excluded</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONTROLS -->
+      <div>
+        <div class="panel">
+          <div class="panel-label">Quick Presets</div>
+          <div class="preset-grid">
+            <button class="preset-btn" data-preset="4,3"><div class="preset-label">3 × 4</div><div class="preset-sub">12 cards</div></button>
+            <button class="preset-btn" data-preset="4,4"><div class="preset-label">4 × 4</div><div class="preset-sub">16 cards</div></button>
+            <button class="preset-btn" data-preset="5,4"><div class="preset-label">4 × 5</div><div class="preset-sub">20 cards</div></button>
+            <button class="preset-btn" data-preset="6,4"><div class="preset-label">4 × 6</div><div class="preset-sub">24 cards</div></button>
+            <button class="preset-btn" data-preset="4,4,15"><div class="preset-label">4×4 (−1)</div><div class="preset-sub">15 cards</div></button>
+            <button class="preset-btn" data-preset="4,5"><div class="preset-label">5 × 4</div><div class="preset-sub">20 cards</div></button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-label">Grid Size</div>
+          <div class="grid-size">
+            <div>
+              <label class="field-label">Rows</label>
+              <div class="num-wrap">
+                <button data-step="rows,-1">−</button>
+                <input type="number" id="in-rows" value="4" min="1" max="20" />
+                <button data-step="rows,1">+</button>
+              </div>
+            </div>
+            <div>
+              <label class="field-label">Cols</label>
+              <div class="num-wrap">
+                <button data-step="cols,-1">−</button>
+                <input type="number" id="in-cols" value="4" min="1" max="20" />
+                <button data-step="cols,1">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-label panel-label-row"><span>Sheet Margins</span><button id="reset-margins">reset</button></div>
+          <div id="margin-fields"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-label panel-label-row"><span>Gaps Between Cards</span><button id="reset-gaps">reset</button></div>
+          <div id="gap-fields"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-label">Output</div>
+          <label class="field-label">Filename Prefix</label>
+          <input type="text" id="in-prefix" class="text-input" value="card" />
+          <div class="text-hint" id="prefix-preview">→ card-01.jpg, card-02.jpg, …</div>
+          <div style="height: 12px"></div>
+          <div id="quality-field"></div>
+        </div>
+
+        <button class="cut-btn" id="cut-btn">
+          <svg><use href="#i-scissors"/></svg>
+          <span id="cut-label">CUT 16 CARDS</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- gallery -->
+<div class="gallery" id="gallery">
+  <div class="gallery-head">
+    <div>
+      <div class="gallery-title">CUT CARDS</div>
+      <div class="gallery-sub" id="gallery-sub">0 files ready · click to download individually</div>
+    </div>
+    <button class="dl-all" id="dl-all-btn">
+      <svg><use href="#i-download"/></svg>
+      DOWNLOAD ALL
+    </button>
+  </div>
+  <div class="gallery-grid" id="gallery-grid"></div>
+</div>
+
+<footer>
+  <span>processing happens locally · nothing leaves your browser</span>
+  <span>v1.0</span>
+</footer>
+
+<script>
+const state = {
+  imageSrc: null,
+  imageDims: { w: 0, h: 0 },
+  rows: 4,
+  cols: 4,
+  marginTop: 2, marginBottom: 2, marginLeft: 2, marginRight: 2,
+  gapX: 1, gapY: 1,
+  excluded: new Set(),
+  crops: [],
+  prefix: 'card',
+  quality: 95,
+};
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+// ---------------- cells computation ----------------
+function computeCells() {
+  if (!state.imageDims.w) return [];
+  const { w: W, h: H } = state.imageDims;
+  const x0 = (state.marginLeft / 100) * W;
+  const x1 = W - (state.marginRight / 100) * W;
+  const y0 = (state.marginTop / 100) * H;
+  const y1 = H - (state.marginBottom / 100) * H;
+  const gridW = Math.max(0, x1 - x0);
+  const gridH = Math.max(0, y1 - y0);
+  const gx = (state.gapX / 100) * W;
+  const gy = (state.gapY / 100) * H;
+  const cellW = (gridW - (state.cols - 1) * gx) / state.cols;
+  const cellH = (gridH - (state.rows - 1) * gy) / state.rows;
+
+  const result = [];
+  let idx = 0;
+  for (let r = 0; r < state.rows; r++) {
+    for (let c = 0; c < state.cols; c++) {
+      result.push({
+        index: idx, row: r, col: c,
+        x: x0 + c * (cellW + gx),
+        y: y0 + r * (cellH + gy),
+        w: cellW, h: cellH,
+        excluded: state.excluded.has(idx),
+      });
+      idx++;
+    }
+  }
+  return result;
+}
+
+// ---------------- overlay rendering ----------------
+function renderOverlay() {
+  const svg = $('#overlay');
+  if (!state.imageDims.w) { svg.innerHTML = ''; return; }
+  svg.setAttribute('viewBox', `0 0 ${state.imageDims.w} ${state.imageDims.h}`);
+  const cells = computeCells();
+  const sw = Math.max(2, state.imageDims.w / 400);
+  const fs = Math.max(20, state.imageDims.w / 35);
+  const dash = `${state.imageDims.w/80} ${state.imageDims.w/160}`;
+
+  svg.innerHTML = cells.map(cell => `
+    <g data-idx="${cell.index}">
+      <rect x="${cell.x}" y="${cell.y}" width="${cell.w}" height="${cell.h}"
+            fill="${cell.excluded ? 'rgba(220,38,38,0.35)' : 'rgba(245,158,11,0.05)'}"
+            stroke="${cell.excluded ? '#dc2626' : '#f59e0b'}"
+            stroke-width="${sw}"
+            ${cell.excluded ? `stroke-dasharray="${dash}"` : ''} />
+      <text x="${cell.x + cell.w/2}" y="${cell.y + cell.h/2}"
+            text-anchor="middle" dominant-baseline="middle"
+            fill="${cell.excluded ? '#fca5a5' : '#fbbf24'}"
+            font-size="${fs}"
+            font-family="JetBrains Mono, monospace" font-weight="700"
+            opacity="${cell.excluded ? 0.9 : 0.45}">
+        ${cell.excluded ? '✕' : String(cell.index + 1).padStart(2, '0')}
+      </text>
+    </g>
+  `).join('');
+
+  svg.querySelectorAll('g[data-idx]').forEach(g => {
+    g.addEventListener('click', () => {
+      const i = parseInt(g.dataset.idx);
+      if (state.excluded.has(i)) state.excluded.delete(i);
+      else state.excluded.add(i);
+      renderOverlay();
+      updateCounts();
+    });
+  });
+}
+
+function updateCounts() {
+  const cells = computeCells();
+  const included = cells.length - state.excluded.size;
+  $('#included-count').textContent = included;
+  $('#total-count').textContent = cells.length;
+  $('#cut-label').textContent = `CUT ${included} CARD${included === 1 ? '' : 'S'}`;
+  $('#cut-btn').disabled = !state.imageDims.w || included === 0;
+}
+
+// ---------------- file handling ----------------
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    state.imageSrc = e.target.result;
+    state.crops = [];
+    state.excluded = new Set();
+    const img = $('#source-img');
+    img.onload = () => {
+      state.imageDims = { w: img.naturalWidth, h: img.naturalHeight };
+      $('#dim-info').textContent = `${img.naturalWidth} × ${img.naturalHeight}px`;
+      renderOverlay();
+      updateCounts();
+    };
+    img.src = state.imageSrc;
+    document.body.dataset.state = 'active';
+    $('#gallery').classList.remove('visible');
+  };
+  reader.readAsDataURL(file);
+}
+
+// ---------------- cropping ----------------
+function cropAll() {
+  const img = $('#source-img');
+  if (!img || !state.imageDims.w) return;
+  const cells = computeCells();
+  const out = [];
+  for (const cell of cells) {
+    if (cell.excluded) continue;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(cell.w));
+    canvas.height = Math.max(1, Math.round(cell.h));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, cell.x, cell.y, cell.w, cell.h, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', state.quality / 100);
+    out.push({ dataUrl, index: cell.index });
+  }
+  state.crops = out;
+  renderGallery();
+  setTimeout(() => $('#gallery').scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+}
+
+function downloadOne(dataUrl, name) {
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function downloadAll() {
+  state.crops.forEach((c, i) => {
+    setTimeout(() => {
+      downloadOne(c.dataUrl, `${state.prefix}-${String(i+1).padStart(2, '0')}.jpg`);
+    }, i * 200);
+  });
+}
+
+// ---------------- gallery ----------------
+function renderGallery() {
+  const grid = $('#gallery-grid');
+  if (!state.crops.length) { $('#gallery').classList.remove('visible'); return; }
+  $('#gallery').classList.add('visible');
+  $('#gallery-sub').textContent = `${state.crops.length} files ready · click to download individually`;
+  grid.innerHTML = state.crops.map((c, i) => {
+    const fn = `${state.prefix}-${String(i+1).padStart(2, '0')}.jpg`;
+    return `
+      <div class="card-tile">
+        <div class="card-img-wrap" data-idx="${i}">
+          <img src="${c.dataUrl}" alt="${fn}" />
+          <div class="overlay-dl"><svg><use href="#i-download"/></svg></div>
+        </div>
+        <div class="card-filename">${fn}</div>
+      </div>
+    `;
+  }).join('');
+  grid.querySelectorAll('.card-img-wrap').forEach(el => {
+    el.addEventListener('click', () => {
+      const i = parseInt(el.dataset.idx);
+      const fn = `${state.prefix}-${String(i+1).padStart(2, '0')}.jpg`;
+      downloadOne(state.crops[i].dataUrl, fn);
+    });
+  });
+}
+
+// ---------------- slider/field builders ----------------
+function buildSlider(container, opts) {
+  const { key, label, min = 0, max = 100, step = 0.1, suffix = '%' } = opts;
+  const wrap = document.createElement('div');
+  wrap.className = 'slider-field';
+  wrap.innerHTML = `
+    <div class="slider-head">
+      <span class="slider-label">${label}</span>
+      <span class="slider-value" data-val="${key}">${Number(state[key]).toFixed(step < 1 ? 1 : 0)}${suffix}</span>
+    </div>
+    <input type="range" min="${min}" max="${max}" step="${step}" value="${state[key]}" data-key="${key}" />
+  `;
+  container.appendChild(wrap);
+  const input = wrap.querySelector('input');
+  const valEl = wrap.querySelector('[data-val]');
+  input.addEventListener('input', () => {
+    state[key] = parseFloat(input.value);
+    valEl.textContent = `${Number(state[key]).toFixed(step < 1 ? 1 : 0)}${suffix}`;
+    renderOverlay();
+    updateCounts();
+  });
+}
+
+function refreshSliderUI() {
+  $$('[data-val]').forEach(el => {
+    const key = el.dataset.val;
+    const suffix = key === 'quality' ? '%' : '%';
+    el.textContent = `${Number(state[key]).toFixed(1)}${suffix}`;
+  });
+  $$('input[type=range][data-key]').forEach(inp => {
+    inp.value = state[inp.dataset.key];
+  });
+}
+
+// ---------------- init ----------------
+function init() {
+  // build sliders
+  buildSlider($('#margin-fields'), { key: 'marginTop', label: 'Top', max: 25 });
+  buildSlider($('#margin-fields'), { key: 'marginBottom', label: 'Bottom', max: 25 });
+  buildSlider($('#margin-fields'), { key: 'marginLeft', label: 'Left', max: 25 });
+  buildSlider($('#margin-fields'), { key: 'marginRight', label: 'Right', max: 25 });
+  buildSlider($('#gap-fields'), { key: 'gapX', label: 'Horizontal', max: 10 });
+  buildSlider($('#gap-fields'), { key: 'gapY', label: 'Vertical', max: 10 });
+  buildSlider($('#quality-field'), { key: 'quality', label: 'JPG Quality', min: 50, max: 100, step: 1, suffix: '%' });
+
+  // file drop
+  const drop = $('#drop-zone');
+  const fileInput = $('#file-input');
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('dragging'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('dragging'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('dragging');
+    handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+
+  // reset
+  $('#reset-btn').addEventListener('click', () => {
+    state.imageSrc = null;
+    state.crops = [];
+    state.excluded = new Set();
+    state.imageDims = { w: 0, h: 0 };
+    document.body.dataset.state = 'empty';
+    $('#gallery').classList.remove('visible');
+    $('#source-img').src = '';
+  });
+
+  // rows / cols
+  $('#in-rows').addEventListener('input', (e) => { state.rows = Math.max(1, Math.min(20, parseInt(e.target.value) || 1)); renderOverlay(); updateCounts(); });
+  $('#in-cols').addEventListener('input', (e) => { state.cols = Math.max(1, Math.min(20, parseInt(e.target.value) || 1)); renderOverlay(); updateCounts(); });
+  $$('button[data-step]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [key, deltaStr] = btn.dataset.step.split(',');
+      const delta = parseInt(deltaStr);
+      state[key] = Math.max(1, Math.min(20, state[key] + delta));
+      $(`#in-${key}`).value = state[key];
+      renderOverlay();
+      updateCounts();
+    });
+  });
+
+  // presets
+  $$('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const parts = btn.dataset.preset.split(',').map(s => parseInt(s));
+      state.rows = parts[0];
+      state.cols = parts[1];
+      state.excluded = new Set(parts.slice(2));
+      $('#in-rows').value = state.rows;
+      $('#in-cols').value = state.cols;
+      renderOverlay();
+      updateCounts();
+    });
+  });
+
+  // reset margins / gaps
+  $('#reset-margins').addEventListener('click', () => {
+    state.marginTop = 2; state.marginBottom = 2; state.marginLeft = 2; state.marginRight = 2;
+    refreshSliderUI(); renderOverlay(); updateCounts();
+  });
+  $('#reset-gaps').addEventListener('click', () => {
+    state.gapX = 1; state.gapY = 1;
+    refreshSliderUI(); renderOverlay(); updateCounts();
+  });
+
+  // prefix + cut + download
+  $('#in-prefix').addEventListener('input', (e) => {
+    state.prefix = e.target.value.replace(/[^a-zA-Z0-9_-]/g, '') || 'card';
+    e.target.value = state.prefix;
+    $('#prefix-preview').textContent = `→ ${state.prefix}-01.jpg, ${state.prefix}-02.jpg, …`;
+    if (state.crops.length) renderGallery();
+  });
+  $('#cut-btn').addEventListener('click', cropAll);
+  $('#dl-all-btn').addEventListener('click', downloadAll);
+
+  updateCounts();
+}
+
+init();
+</script>
+</body>
+</html>
